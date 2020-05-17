@@ -17,8 +17,8 @@
 #define WINDOW_CLASS_NAME L"WINCLASS1"
 
 // пораметры эранна по деффолту
-#define SCREEN_WIDTH    640  // размер окна
-#define SCREEN_HEIGHT   480
+#define SCREEN_WIDTH    1920  // размер окна
+#define SCREEN_HEIGHT   1080
 #define SCREEN_BPP      32    // количество битов на пиксель
 
 // TYPES //////////////////////////////////////////////////////
@@ -35,6 +35,12 @@ typedef unsigned int   UINT;
 #define KEYDOWN(vk_code) ((GetAsyncKeyState(vk_code) & 0x8000) ? 1 : 0)
 #define KEYUP(vk_code)   ((GetAsyncKeyState(vk_code) & 0x8000) ? 0 : 1)
 
+// макрос для определения пикселя в формате 16-bit 5.5.5 
+#define _RGB16BIT555(r,g,b) ((b&31) + ((g&31) << 5) + ((r&31) << 10))
+// макрос для определения пикселя в формате 16-bit 5.6.5 
+#define _RGB16BIT565(r,g,b) ((b&31) + ((g&63) << 5) + ((r&31) << 11))
+// макрос для определения пикселя в формате 32 - bit A.8.8.8
+#define _RGB32BIT(a,r,g,b) ((b) + ((g) << 8) + ((r) << 16) + ((a) << 24))
 
 // инициализация структуры DirectDraw
 #define DDRAW_INIT_STRUCT(ddstruct) { memset(&ddstruct,0,sizeof(ddstruct)); ddstruct.dwSize=sizeof(ddstruct); }
@@ -49,8 +55,37 @@ LPDIRECTDRAW7         lpdd = NULL;           // основной объект Di
 LPDIRECTDRAWSURFACE7  lpddsprimary = NULL;   // структура основной поверхности
 DDSURFACEDESC2        ddsd;                  // структура описания поверхности
 
+// Функция установки пикселя 16-bit, в аргумент функции необходимо указать указатель на видео буфер и длинну одной строки экрана в bit.
+inline void Plot_Pixel_16(int x, int y,
+    int rad, int green, int blue,
+    USHORT* video_buffer, int lpitch16)
+{
+    USHORT pixel = _RGB16BIT555(rad, green, blue);
 
+    video_buffer[x + y * lpitch16] = pixel;
+}
+// Функция установки пикселя 24-bit, в аргумент функции необходимо указать указатель на видео буфер и длинну одной строки экрана в bit.
+inline void Plot_Pixel_24(int x, int y,
+    int rad, int green, int blue,
+    UCHAR* video_buffer, int lpitch24)
+{
+    UINT pixel_addr = (3 * x + y * lpitch24);
 
+    video_buffer[pixel_addr]     = blue;
+    video_buffer[pixel_addr + 1] = green;
+    video_buffer[pixel_addr + 2] = rad;
+}
+// Функция установки пикселя 32-bit, в аргумент функции необходимо указать указатель на видео буфер и длинну одной строки экрана в bit.
+inline void Plot_Pixel_32(int x, int y, int alpha,
+    int rad, int green, int blue,
+    UINT* video_buffer, int lpitch32)
+{
+    UINT pixel = _RGB32BIT(alpha, rad, green, blue);
+
+    video_buffer[x + y * lpitch32] = pixel;
+
+    
+}
 
 // FUNCTIONS //////////////////////////////////////////////
 
@@ -129,7 +164,10 @@ int Game_Main(void* parms = NULL, int num_parms = 0)
         NULL)))
         return(0);
 
- 
+    UINT* buffer = (UINT*)ddsd.lpSurface;
+    UINT lpitch32 = (UINT)(ddsd.lPitch >> 2);
+
+    Plot_Pixel_32(rand() % SCREEN_WIDTH, rand() % SCREEN_HEIGHT, 0, rand() % 256, rand() % 256, rand() % 256, buffer, lpitch32);
 
     // разблокирование основной поверхности
     if (FAILED(lpddsprimary->Unlock(NULL)))
