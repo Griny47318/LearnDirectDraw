@@ -46,13 +46,14 @@ typedef unsigned int   UINT;
 #define DDRAW_INIT_STRUCT(ddstruct) { memset(&ddstruct,0,sizeof(ddstruct)); ddstruct.dwSize=sizeof(ddstruct); }
 
 // GLOBALS ////////////////////////////////////////////////
-HWND      main_window_handle = NULL; // глобальная переменная дискриптора окна
-HINSTANCE hinstance_app = NULL;      // глобальный дискриптор экземпляра приложения
+HWND      main_window_handle = NULL;    // глобальная переменная дискриптора окна
+HINSTANCE hinstance_app      = NULL;    // глобальный дискриптор экземпляра приложения
 
 // основные материалы directdraw 
 
-LPDIRECTDRAW7         lpdd = NULL;           // основной объект DirectDraw
+LPDIRECTDRAW7         lpdd         = NULL;   // основной объект DirectDraw
 LPDIRECTDRAWSURFACE7  lpddsprimary = NULL;   // структура основной поверхности
+LPDIRECTDRAWSURFACE7  lpddsback    = NULL;   // структура вторичной поверхности(задний буфер)
 DDSURFACEDESC2        ddsd;                  // структура описания поверхности
 
 // Функция установки пикселя 16-bit, в аргумент функции необходимо указать указатель на видео буфер и длинну одной строки экрана в bit.
@@ -159,19 +160,28 @@ int Game_Main(void* parms = NULL, int num_parms = 0)
     DDRAW_INIT_STRUCT(ddsd);
 
     // блокировка основной поверхности
-    if (FAILED(lpddsprimary->Lock(NULL, &ddsd,
+    if (FAILED(lpddsback->Lock(NULL, &ddsd,
         DDLOCK_SURFACEMEMORYPTR | DDLOCK_WAIT,
         NULL)))
         return(0);
 
-    UINT* buffer = (UINT*)ddsd.lpSurface;
+    UINT* back_buffer = (UINT*)ddsd.lpSurface;
     UINT lpitch32 = (UINT)(ddsd.lPitch >> 2);
+   
+    // Очистка заднего буфера
+    // Поверка линейности памяти
+    memset((void*)back_buffer, 0, ddsd.lPitch * SCREEN_HEIGHT);
+    
+    // заполнение экрана 100 пиксилей
+    for (int i = 0; i < 1000; i++) {
 
-    Plot_Pixel_32(rand() % SCREEN_WIDTH, rand() % SCREEN_HEIGHT, 0, rand() % 256, rand() % 256, rand() % 256, buffer, lpitch32);
-
+        Plot_Pixel_32(rand() % SCREEN_WIDTH, rand() % SCREEN_HEIGHT, 0, rand() % 256, rand() % 256, rand() % 256, back_buffer, lpitch32);
+    }
     // разблокирование основной поверхности
-    if (FAILED(lpddsprimary->Unlock(NULL)))
+    if (FAILED(lpddsback->Unlock(NULL)))
         return(0);
+
+    while (FAILED(lpddsprimary->Flip(NULL, DDFLIP_WAIT)));
 
     // успешное завершение функции
     return(1);
@@ -202,13 +212,18 @@ int Game_Init(void* parms = NULL, int num_parms = 0)
     // заполнение структуры поверхности
     memset(&ddsd, 0, sizeof(ddsd));
     ddsd.dwSize = sizeof(ddsd);
-    ddsd.dwFlags = DDSD_CAPS;
-    ddsd.ddsCaps.dwCaps = DDSCAPS_PRIMARYSURFACE;
+    ddsd.dwFlags = DDSD_CAPS | DDSD_BACKBUFFERCOUNT;
+    ddsd.dwBackBufferCount = 1;
+    ddsd.ddsCaps.dwCaps = DDSCAPS_PRIMARYSURFACE | DDSCAPS_COMPLEX | DDSCAPS_FLIP;
 
     // создание первичной поверхности
     if (FAILED(lpdd->CreateSurface(&ddsd, &lpddsprimary, NULL)))
         return(0);
 
+    ddsd.ddsCaps.dwCaps = DDSCAPS_BACKBUFFER;
+    // присвоение первичной поверхности задний буфер
+    if (FAILED(lpddsprimary->GetAttachedSurface(&ddsd.ddsCaps, &lpddsback)))
+        return(0);
     // усмешное завершение работы функции
     return(1);
 
@@ -218,14 +233,18 @@ int Game_Init(void* parms = NULL, int num_parms = 0)
 
 int Game_Shutdown(void* parms = NULL, int num_parms = 0)
 {
-   
+    // освобождение данных из заднего буффера
+    if (lpddsback) {
+        lpddsback->Release();
+        lpddsback = NULL;
+    }
     // освобождение данных из основной поверхности
     if (lpddsprimary)
     {
         lpddsprimary->Release();
         lpddsprimary = NULL;
     } 
-
+    
     // освобождение структуры DirectDraw7
     if (lpdd)
     {
