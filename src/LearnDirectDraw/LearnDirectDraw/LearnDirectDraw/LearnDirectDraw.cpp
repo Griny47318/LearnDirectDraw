@@ -17,8 +17,8 @@
 #define WINDOW_CLASS_NAME L"WINCLASS1"
 
 // пораметры эранна по деффолту
-#define SCREEN_WIDTH    1920  // размер окна
-#define SCREEN_HEIGHT   1080
+#define SCREEN_WIDTH    640  // размер окна
+#define SCREEN_HEIGHT   480
 #define SCREEN_BPP      32    // количество битов на пиксель
 
 // TYPES //////////////////////////////////////////////////////
@@ -48,6 +48,7 @@ typedef unsigned int   UINT;
 // GLOBALS ////////////////////////////////////////////////
 HWND      main_window_handle = NULL;    // глобальная переменная дискриптора окна
 HINSTANCE hinstance_app      = NULL;    // глобальный дискриптор экземпляра приложения
+UINT      window_closed      = 0;
 
 // основные материалы directdraw 
 
@@ -55,6 +56,7 @@ LPDIRECTDRAW7         lpdd         = NULL;   // основной объект Di
 LPDIRECTDRAWSURFACE7  lpddsprimary = NULL;   // структура основной поверхности
 LPDIRECTDRAWSURFACE7  lpddsback    = NULL;   // структура вторичной поверхности(задний буфер)
 DDSURFACEDESC2        ddsd;                  // структура описания поверхности
+DDBLTFX               ddbltfx;               // структура содержащая служебную информацию для функции Blt() 
 
 // Функция установки пикселя 16-bit, в аргумент функции необходимо указать указатель на видео буфер и длинну одной строки экрана в bit.
 inline void Plot_Pixel_16(int x, int y,
@@ -150,42 +152,58 @@ int Game_Main(void* parms = NULL, int num_parms = 0)
 {
     
 
+    
+   
+    RECT source_rect, // Исходный прямоугольник
+         dest_rect; // Прямоугольник назначения
+
+    // Подстраховка против повторного запуска
+    if (window_closed)
+        return(0);
+
     // проверка на нажатие клавиши ESC и отправления сообщения WM_CLOSE
     if (KEYDOWN(VK_ESCAPE))
-        SendMessage(main_window_handle, WM_CLOSE, 0, 0);
+    {
+        PostMessage(main_window_handle, WM_CLOSE, 0, 0);
+        window_closed = 1;
+    } 
 
+    // Выбор случайного исходного прямоугольника
+    int x1 = rand() % SCREEN_WIDTH;
+    int y1 = rand() % SCREEN_HEIGHT;
+    int x2 = rand() % SCREEN_WIDTH;
+    int y2 = rand() % SCREEN_HEIGHT;
 
-    
-    // очистка структуры описания поверхности
-    DDRAW_INIT_STRUCT(ddsd);
+    // Выбор случайного прямоугольника назначения
+    int x3 = rand() % SCREEN_WIDTH;
+    int y3 = rand() % SCREEN_HEIGHT;
+    int x4 = rand() % SCREEN_WIDTH;
+    int y4 = rand() % SCREEN_HEIGHT;
 
-    // блокировка основной поверхности
-    if (FAILED(lpddsback->Lock(NULL, &ddsd,
-        DDLOCK_SURFACEMEMORYPTR | DDLOCK_WAIT,
-        NULL)))
+    // Задание структуры RECT для заполнения области между угловыми точками (x1,y1) и (x2,y2) на исходной поверхности
+    source_rect.left = x1;
+    source_rect.top = y1;
+    source_rect.right = x2;
+    source_rect.bottom = y2;
+
+    // Задание структуры RECT для заполнения области между угловыми точками (x3,y3) и (x4,y4) на поверхности назначения
+    dest_rect.left = x3;
+    dest_rect.top = y3;
+    dest_rect.right = x4;
+    dest_rect.bottom = y4;
+
+    // Вызов блиттера
+    if (FAILED(lpddsprimary->Blt(
+        &dest_rect,   // Область назначения
+        lpddsback,    // Исходная поверхность
+        &source_rect, // Исходная область
+        DDBLT_WAIT,   // Управляющие флаги
+        NULL)))       // Указатель на структуру DDBLTFX, в которой хранится необходимая информация
         return(0);
 
-    UINT* back_buffer = (UINT*)ddsd.lpSurface;
-    UINT lpitch32 = (UINT)(ddsd.lPitch >> 2);
-   
-    // Очистка заднего буфера
-    // Поверка линейности памяти
-    memset((void*)back_buffer, 0, ddsd.lPitch * SCREEN_HEIGHT);
-    
-    // заполнение экрана 100 пиксилей
-    for (int i = 0; i < 1000; i++) {
 
-        Plot_Pixel_32(rand() % SCREEN_WIDTH, rand() % SCREEN_HEIGHT, 0, rand() % 256, rand() % 256, rand() % 256, back_buffer, lpitch32);
-    }
-    // разблокирование основной поверхности
-    if (FAILED(lpddsback->Unlock(NULL)))
-        return(0);
-
-    while (FAILED(lpddsprimary->Flip(NULL, DDFLIP_WAIT)));
-
-    // успешное завершение функции
+    // усмешное завершение работы функции
     return(1);
-
 } // завершение функции Game_Main
 
 ////////////////////////////////////////////////////////////
@@ -224,6 +242,31 @@ int Game_Init(void* parms = NULL, int num_parms = 0)
     // присвоение первичной поверхности задний буфер
     if (FAILED(lpddsprimary->GetAttachedSurface(&ddsd.ddsCaps, &lpddsback)))
         return(0);
+
+    DDRAW_INIT_STRUCT(ddsd);
+
+    // блокирование заднего буффера
+    if (FAILED(lpddsback->Lock(NULL, &ddsd,
+        DDLOCK_SURFACEMEMORYPTR | DDLOCK_WAIT,
+        NULL)))
+        return(0);
+
+    // получения указателя к поферхности заднего буфера и длинны одной строки в 32-bit режиме
+    UINT* back_buffer = (UINT*)ddsd.lpSurface;
+    UINT lpitch32 = (UINT)(ddsd.lPitch >> 2);
+
+    // заполнения поферхности по строчно случайным цветом
+    for (int i = 0; i < 480; i++) {
+        UINT pixel = _RGB32BIT(0, rand() % 256, rand() % 256, rand() % 256);
+        for (int j = 0; j < 640; j++) {
+            back_buffer[j + i * 640] = pixel;
+        }
+    }
+
+    // разблокирование заднего буфера
+    if (FAILED(lpddsback->Unlock(NULL)))
+        return(0);
+    
     // усмешное завершение работы функции
     return(1);
 
