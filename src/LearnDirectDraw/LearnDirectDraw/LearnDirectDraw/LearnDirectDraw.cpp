@@ -57,6 +57,7 @@ LPDIRECTDRAWSURFACE7  lpddsprimary = NULL;   // структура основн�
 LPDIRECTDRAWSURFACE7  lpddsback    = NULL;   // структура вторичной поверхности(задний буфер)
 DDSURFACEDESC2        ddsd;                  // структура описания поверхности
 DDBLTFX               ddbltfx;               // структура содержащая служебную информацию для функции Blt() 
+LPDIRECTDRAWCLIPPER   lpddclipper  = NULL;   // структура отсекателя поверхности DirectDraw
 
 // Функция установки пикселя 16-bit, в аргумент функции необходимо указать указатель на видео буфер и длинну одной строки экрана в bit.
 inline void Plot_Pixel_16(int x, int y,
@@ -89,6 +90,9 @@ inline void Plot_Pixel_32(int x, int y, int alpha,
 
     
 }
+
+
+LPDIRECTDRAWCLIPPER DDraw_Attach_Clipper(LPDIRECTDRAWSURFACE7 lpdds, int num_rects, LPRECT clip_list); // функция установки отсекателя
 
 // FUNCTIONS //////////////////////////////////////////////
 
@@ -149,10 +153,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd,
 ////////////////////////////////////////////////////////////
 
 int Game_Main(void* parms = NULL, int num_parms = 0)
-{
-    
-
-    
+{  
    
     RECT source_rect, // Исходный прямоугольник
          dest_rect; // Прямоугольник назначения
@@ -245,26 +246,37 @@ int Game_Init(void* parms = NULL, int num_parms = 0)
 
     DDRAW_INIT_STRUCT(ddsd);
 
+    
     // блокирование заднего буффера
     if (FAILED(lpddsback->Lock(NULL, &ddsd,
         DDLOCK_SURFACEMEMORYPTR | DDLOCK_WAIT,
         NULL)))
         return(0);
 
+    
     // получения указателя к поферхности заднего буфера и длинны одной строки в 32-bit режиме
     UINT* back_buffer = (UINT*)ddsd.lpSurface;
     UINT lpitch32 = (UINT)(ddsd.lPitch >> 2);
 
     // заполнения поферхности по строчно случайным цветом
-    for (int i = 0; i < 480; i++) {
+    for (int i = 0; i < SCREEN_HEIGHT; i++) {
         UINT pixel = _RGB32BIT(0, rand() % 256, rand() % 256, rand() % 256);
-        for (int j = 0; j < 640; j++) {
-            back_buffer[j + i * 640] = pixel;
+        for (int j = 0; j < lpitch32; j++) {
+            back_buffer[j + i * lpitch32] = pixel;
         }
     }
 
     // разблокирование заднего буфера
     if (FAILED(lpddsback->Unlock(NULL)))
+        return(0);
+    
+    // задание поверзностей отсечения
+    RECT rect_list[3] = { {10,10,50,50},
+                     {100,100,200,200},
+                     {300,300, 500, 450} };
+
+    // создание и добавление поверхности отсечения к основной поверхности
+    if (FAILED(lpddclipper = DDraw_Attach_Clipper(lpddsprimary, 3, rect_list)))
         return(0);
     
     // усмешное завершение работы функции
@@ -387,3 +399,74 @@ int WINAPI WinMain(HINSTANCE hinstance,
 
 ///////////////////////////////////////////////////////////
 
+
+LPDIRECTDRAWCLIPPER DDraw_Attach_Clipper(LPDIRECTDRAWSURFACE7 lpdds,
+    int num_rects,
+    LPRECT clip_list) 
+{
+    int index = 0;                      // индексная переменная
+    LPDIRECTDRAWCLIPPER   lpddclipper;  // структура отсекателя
+    LPRGNDATA region_data;              // указатель на заголовки и список областей отсечения
+
+    // создание отсекателя
+    if (FAILED(lpdd->CreateClipper(0, &lpddclipper, NULL)))
+        return(NULL);
+
+    // аллокация памяти для списка областей отсечения
+    region_data = (LPRGNDATA)malloc(sizeof(RGNDATAHEADER) + num_rects * sizeof(RECT));
+
+    // копирование данных в список областей отсечения
+    memcpy(region_data->Buffer, clip_list, sizeof(RECT) * num_rects);
+
+    // заполнение структуры 
+    region_data->rdh.dwSize = sizeof(RGNDATAHEADER);      // размер 
+    region_data->rdh.iType = RDH_RECTANGLES;              // тип
+    region_data->rdh.nCount = num_rects;                  // количество прямоугольников в списке областей отсечения
+    region_data->rdh.nRgnSize = num_rects * sizeof(RECT); // размер занимаемой памяти
+
+    // размеры глобальной области отсечения
+    region_data->rdh.rcBound.left = 64000;                 
+    region_data->rdh.rcBound.top = 64000;
+    region_data->rdh.rcBound.right = -64000;
+    region_data->rdh.rcBound.bottom = -64000;
+
+
+    // нахождение границ всех областей отсечения
+    for (index = 0; index < num_rects; index++)
+    {
+        // test if the next rectangle unioned with the current bound is larger
+        if (clip_list[index].left < region_data->rdh.rcBound.left)
+            region_data->rdh.rcBound.left = clip_list[index].left;
+
+        if (clip_list[index].right > region_data->rdh.rcBound.right)
+            region_data->rdh.rcBound.right = clip_list[index].right;
+
+        if (clip_list[index].top < region_data->rdh.rcBound.top)
+            region_data->rdh.rcBound.top = clip_list[index].top;
+
+        if (clip_list[index].bottom > region_data->rdh.rcBound.bottom)
+            region_data->rdh.rcBound.bottom = clip_list[index].bottom;
+
+    }
+
+    // установка областей отсечения к отсекателю
+    if (FAILED(lpddclipper->SetClipList(region_data, 0)))
+    {
+        // в случае неудачи освободить память
+        free(region_data);
+        return(NULL);
+    }
+
+    // установка отсекателя к заданной поверхности
+    if (FAILED(lpdds->SetClipper(lpddclipper)))
+    {
+        // в случае неудачи освободить память
+        free(region_data);
+        return(NULL);
+    }
+
+    // освободить память
+    free(region_data);
+    // возвратить отсекатель
+    return(lpddclipper);
+}

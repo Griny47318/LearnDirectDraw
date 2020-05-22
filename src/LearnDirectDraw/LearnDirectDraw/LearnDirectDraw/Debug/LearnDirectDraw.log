@@ -1,4 +1,5 @@
 ﻿  LearnDirectDraw.cpp
-F:\Users\CodeComplite\LearnDirecX\LearnDirectDraw\src\LearnDirectDraw\LearnDirectDraw\LearnDirectDraw\LearnDirectDraw.cpp(103,10): warning C4101: buffer: неиспользованная локальная переменная
-F:\Users\CodeComplite\LearnDirecX\LearnDirectDraw\src\LearnDirectDraw\LearnDirectDraw\LearnDirectDraw\LearnDirectDraw.cpp(314,16): warning C4101: hdc: неиспользованная локальная переменная
+F:\Users\CodeComplite\LearnDirecX\LearnDirectDraw\src\LearnDirectDraw\LearnDirectDraw\LearnDirectDraw\LearnDirectDraw.cpp(107,10): warning C4101: buffer: неиспользованная локальная переменная
+F:\Users\CodeComplite\LearnDirecX\LearnDirectDraw\src\LearnDirectDraw\LearnDirectDraw\LearnDirectDraw\LearnDirectDraw.cpp(267,27): warning C4018: <: несоответствие типов со знаком и без знака
+F:\Users\CodeComplite\LearnDirecX\LearnDirectDraw\src\LearnDirectDraw\LearnDirectDraw\LearnDirectDraw\LearnDirectDraw.cpp(329,16): warning C4101: hdc: неиспользованная локальная переменная
   LearnDirectDraw.vcxproj -> F:\Users\CodeComplite\LearnDirecX\LearnDirectDraw\src\LearnDirectDraw\LearnDirectDraw\Debug\LearnDirectDraw.exe
